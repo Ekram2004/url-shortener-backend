@@ -1,31 +1,51 @@
 const express = require('express');
-const Url = require('../models/URL');
 const shortid = require('shortid');
+const validurl = require('valid-url')
+const Url = require('../models/URL');
 const router = express.Router();
+require('dotenv').config();
 
 router.post('/shorten', async (req, res) => {
-    const { originalUrl } = req.body;
-    const baseRule = process.env.BASE_URL;
+  const { originalUrl } = req.body;
+  const baseUrl = process.env.BASE_URL;
 
-    if (!validUrl.isUri(baseRule)) {
-        return res.status(400).json('Invalid base URL');
+  if (!validurl.isUri(baseUrl))
+    return res.status(400).json({ message: 'Invalid URL' });
+  if (validurl.isUri(originalUrl)) {
+    try {
+      let url = await Url.findOne({ originalUrl });
+      if (url) return res.json(url);
+      const shortCode = shortid.generate();
+      const shortUrl = `${baseUrl}/${shortCode}`;
+      url = new Url({
+        shortCode,
+        originalUrl,
+        shortUrl
+      });
+      await url.save();
+      res.status(201).json(url);
+    } catch (err) {
+      console.error(err.message);
+      res.status(500).json({ error: "Server Error" });
     }
-    if (validUrl.isUri(originalUrl)) {
-        try {
-            let url = await Url.findOne({ originalUrl });
-            if (url) {
-                res.json(url);
-            }
-            const shortCode = shortid.generate();
-            const shortUrl = `${baseRule}/${shortCode}`;
-            url = new Url({ originalUrl, shortCode, shortUrl });
-            await url.save();
-            res.json(url);
-        } catch (err) {
-            console.error(err);
-            res.status(500).json("Server error");
-        }
+  } else {
+    res.status(404).json({ error: 'URL error' });
+  }
+});
+
+router.get("/:shortCode", async (req, res) => {
+  const { shortCode } = req.params;
+  try {
+    const url = await Url.findOne({ shortCode });
+    if (url) {
+      return res.redirect(url.originalUrl);
+    } else {
+      return res.status(404).json({ error: "Short URL not found" });
     }
+  } catch (err) {
+    console.error(err.message);
+    return res.status(500).json({ error: "Server error" });
+  }
 });
 
 module.exports = router;
